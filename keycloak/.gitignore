@@ -1,0 +1,14 @@
+# Environment files with secrets
+.env
+
+# Maven build output
+spi/target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db

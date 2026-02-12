@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Keycloak + Mideye Test App</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 { margin-bottom: 8px; color: #333; }
+        .subtitle { color: #666; margin-bottom: 24px; }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 16px;
+        }
+        button {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+        }
+        button:hover { background: #0052a3; }
+        button.logout { background: #cc3333; }
+        button.logout:hover { background: #a32929; }
+        .token-display {
+            background: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 12px;
+            font-family: monospace;
+            font-size: 13px;
+            word-break: break-all;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 12px;
+        }
+        .info { color: #666; font-size: 14px; margin-top: 8px; }
+        .hidden { display: none; }
+        label { font-weight: 600; display: block; margin-bottom: 4px; }
+        .claims-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        .claims-table th, .claims-table td {
+            text-align: left;
+            padding: 6px 8px;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+        }
+        .claims-table th { color: #666; }
+    </style>
+</head>
+<body>
+    <h1>🔐 Keycloak + Mideye Test</h1>
+    <p class="subtitle">OpenID Connect authentication test page</p>
+
+    <!-- Configuration -->
+    <div class="card" id="config-section">
+        <label>Keycloak URL</label>
+        <input type="text" id="keycloakUrl" value="http://localhost:8080"
+               style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;margin-bottom:12px;">
+
+        <label>Realm</label>
+        <input type="text" id="realm" value="mideye-test"
+               style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;margin-bottom:12px;">
+
+        <label>Client ID</label>
+        <input type="text" id="clientId" value="test-app"
+               style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;margin-bottom:16px;">
+
+        <button onclick="login()">Sign in with Keycloak</button>
+        <p class="info">This will redirect you to Keycloak for authentication. After password login, Mideye MFA will be triggered.</p>
+    </div>
+
+    <!-- Authenticated state -->
+    <div class="card hidden" id="user-section">
+        <h2>✅ Authenticated</h2>
+        <table class="claims-table" id="claims-table">
+            <thead><tr><th>Claim</th><th>Value</th></tr></thead>
+            <tbody></tbody>
+        </table>
+        <br>
+        <button class="logout" onclick="logout()">Sign out</button>
+    </div>
+
+    <!-- Token display -->
+    <div class="card hidden" id="token-section">
+        <label>ID Token (decoded)</label>
+        <div class="token-display" id="id-token-display"></div>
+        <br>
+        <label>Access Token (raw)</label>
+        <div class="token-display" id="access-token-display"></div>
+    </div>
+
+    <script>
+        // Simple OIDC Authorization Code flow (with PKCE)
+
+        function getConfig() {
+            return {
+                keycloakUrl: document.getElementById('keycloakUrl').value.replace(/\/$/, ''),
+                realm: document.getElementById('realm').value,
+                clientId: document.getElementById('clientId').value,
+            };
+        }
+
+        function getAuthEndpoint(config) {
+            return `${config.keycloakUrl}/realms/${config.realm}/protocol/openid-connect/auth`;
+        }
+
+        function getTokenEndpoint(config) {
+            return `${config.keycloakUrl}/realms/${config.realm}/protocol/openid-connect/token`;
+        }
+
+        function getLogoutEndpoint(config) {
+            return `${config.keycloakUrl}/realms/${config.realm}/protocol/openid-connect/logout`;
+        }
+
+        // PKCE helpers
+        function generateRandomString(length) {
+            const array = new Uint8Array(length);
+            crypto.getRandomValues(array);
+            return Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function generateCodeChallenge(verifier) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(verifier);
+            const digest = await crypto.subtle.digest('SHA-256', data);
+            return btoa(String.fromCharCode(...new Uint8Array(digest)))
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_')
+                .replace(/=+$/, '');
+        }
+
+        async function login() {
+            const config = getConfig();
+            const state = generateRandomString(16);
+            const codeVerifier = generateRandomString(32);
+            const codeChallenge = await generateCodeChallenge(codeVerifier);
+
+            // Store state for verification
+            sessionStorage.setItem('oidc_state', state);
+            sessionStorage.setItem('oidc_code_verifier', codeVerifier);
+            sessionStorage.setItem('oidc_config', JSON.stringify(config));
+
+            const redirectUri = window.location.origin + window.location.pathname;
+            const params = new URLSearchParams({
+                response_type: 'code',
+                client_id: config.clientId,
+                redirect_uri: redirectUri,
+                scope: 'openid email profile',
+                state: state,
+                code_challenge: codeChallenge,
+                code_challenge_method: 'S256',
+            });
+
+            window.location.href = `${getAuthEndpoint(config)}?${params}`;
+        }
+
+        async function handleCallback() {
+            const params = new URLSearchParams(window.location.search);
+            const code = params.get('code');
+            const state = params.get('state');
+
+            if (!code) return false;
+
+            // Verify state
+            const savedState = sessionStorage.getItem('oidc_state');
+            if (state !== savedState) {
+                alert('State mismatch! Possible CSRF attack.');
+                return false;
+            }
+
+            const codeVerifier = sessionStorage.getItem('oidc_code_verifier');
+            const config = JSON.parse(sessionStorage.getItem('oidc_config'));
+            const redirectUri = window.location.origin + window.location.pathname;
+
+            // Exchange code for tokens
+            const tokenResponse = await fetch(getTokenEndpoint(config), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    grant_type: 'authorization_code',
+                    client_id: config.clientId,
+                    code: code,
+                    redirect_uri: redirectUri,
+                    code_verifier: codeVerifier,
+                }),
+            });
+
+            const tokens = await tokenResponse.json();
+
+            if (tokens.error) {
+                alert(`Token error: ${tokens.error_description || tokens.error}`);
+                return false;
+            }
+
+            // Clean up URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+
+            // Decode and display
+            displayTokens(tokens);
+            return true;
+        }
+
+        function decodeJwt(token) {
+            const parts = token.split('.');
+            if (parts.length !== 3) return null;
+            const payload = atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'));
+            return JSON.parse(payload);
+        }
+
+        function displayTokens(tokens) {
+            const idToken = decodeJwt(tokens.id_token);
+
+            // Show user info
+            document.getElementById('config-section').classList.add('hidden');
+            document.getElementById('user-section').classList.remove('hidden');
+            document.getElementById('token-section').classList.remove('hidden');
+
+            // Claims table
+            const tbody = document.querySelector('#claims-table tbody');
+            const interestingClaims = ['sub', 'preferred_username', 'email', 'name', 'given_name', 'family_name'];
+            for (const claim of interestingClaims) {
+                if (idToken[claim]) {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `<td><code>${claim}</code></td><td>${idToken[claim]}</td>`;
+                    tbody.appendChild(tr);
+                }
+            }
+
+            // Token displays
+            document.getElementById('id-token-display').textContent = JSON.stringify(idToken, null, 2);
+            document.getElementById('access-token-display').textContent = tokens.access_token;
+
+            // Store for logout
+            sessionStorage.setItem('oidc_id_token', tokens.id_token);
+        }
+
+        function logout() {
+            const config = JSON.parse(sessionStorage.getItem('oidc_config') || '{}');
+            const idToken = sessionStorage.getItem('oidc_id_token');
+            sessionStorage.clear();
+
+            if (config.keycloakUrl) {
+                const params = new URLSearchParams({
+                    id_token_hint: idToken,
+                    post_logout_redirect_uri: window.location.origin + window.location.pathname,
+                });
+                window.location.href = `${getLogoutEndpoint(config)}?${params}`;
+            } else {
+                window.location.reload();
+            }
+        }
+
+        // Check for callback on page load
+        handleCallback();
+    </script>
+</body>
+</html>

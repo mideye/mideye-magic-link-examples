@@ -1,0 +1,3 @@
+# This directory is for Keycloak provider JARs.
+# Place the built mideye-magic-link-authenticator.jar here.
+# It is mounted into the Keycloak container at /opt/keycloak/providers/

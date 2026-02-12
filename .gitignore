@@ -10,7 +10,6 @@ env/
 
 # Java
 *.class
-*.jar
 
 # .NET
 bin/
@@ -28,4 +27,8 @@ go.sum
 *.swo
 *~
 .DS_Store
+
+# Keycloak
+keycloak/.env
+keycloak/spi/target/
 Thumbs.db

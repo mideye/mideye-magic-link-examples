@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: keycloak-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    container_name: keycloak
+    restart: unless-stopped
+    command: start-dev
+    environment:
+      # Keycloak admin credentials
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+
+      # Database
+      KC_DB: postgres
+      KC_DB_URL_HOST: postgres
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
+
+      # Mideye Magic Link API configuration
+      # Update these to match your Mideye Server:
+      MIDEYE_URL: ${MIDEYE_URL:-https://your-mideye-server:8443}
+      MIDEYE_API_KEY: ${MIDEYE_API_KEY:-your-api-key-here}
+
+      # Keycloak settings
+      KC_HEALTH_ENABLED: "true"
+      KC_LOG_LEVEL: info
+
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./providers:/opt/keycloak/providers:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    extra_hosts:
+      # Allows Keycloak to reach services on the Docker host
+      # (useful if Mideye Server runs on the same machine)
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  postgres_data:
