@@ -4,16 +4,14 @@ import org.jboss.logging.Logger;
 import org.keycloak.authentication.AuthenticationFlowContext;
 import org.keycloak.authentication.AuthenticationFlowError;
 import org.keycloak.authentication.Authenticator;
+import org.keycloak.models.AuthenticatorConfigModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 
-import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -23,7 +21,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Keycloak Authenticator that calls the Mideye Magic Link API for MFA.
@@ -33,26 +30,17 @@ import java.util.Map;
  * SMS OTP to the user's phone. The API blocks until the user responds.</p>
  *
  * <h3>Configuration</h3>
- * <p>The authenticator reads configuration from environment variables:</p>
- * <ul>
- *   <li>{@code MIDEYE_URL} — Base URL of the Mideye Server (e.g., https://mideye.example.com:8443)</li>
- *   <li>{@code MIDEYE_API_KEY} — API key for the Magic Link endpoint</li>
- *   <li>{@code MIDEYE_PHONE_ATTRIBUTE} — Keycloak user attribute containing the phone number (default: phoneNumber)</li>
- *   <li>{@code MIDEYE_TIMEOUT_SECONDS} — HTTP request timeout in seconds (default: 120)</li>
- *   <li>{@code MIDEYE_SKIP_TLS_VERIFY} — Set to "true" to skip TLS certificate verification for testing (default: false)</li>
- * </ul>
+ * <p>All settings are configured per-realm in the Keycloak Admin Console
+ * (Authentication → Flows → Mideye Magic Link → ⚙ Settings). Environment
+ * variables ({@code MIDEYE_URL}, {@code MIDEYE_API_KEY}) serve as fallback
+ * for backward compatibility.</p>
  *
- * <h3>How it works</h3>
- * <ol>
- *   <li>User completes username/password authentication</li>
- *   <li>This authenticator reads the user's phone number from the configured attribute</li>
- *   <li>Calls GET https://{mideyeServer}:8443/api/sfwa/auth?msisdn={phone}</li>
- *   <li>The API blocks until the user responds on their phone</li>
- *   <li>If response is {@code {"code":"TOUCH_ACCEPTED"}} → authentication succeeds</li>
- *   <li>Any other response → authentication fails</li>
- * </ol>
+ * <h3>Dashboard</h3>
+ * <p>Recent authentication events are recorded in an in-memory cache and
+ * visible on the dashboard at {@code /realms/{realm}/mideye-magic-link/dashboard}.</p>
  *
  * @see MideyeMagicLinkAuthenticatorFactory
+ * @see MagicLinkConfig
  */
 public class MideyeMagicLinkAuthenticator implements Authenticator {
 
@@ -60,50 +48,51 @@ public class MideyeMagicLinkAuthenticator implements Authenticator {
 
     private static final String ACCEPTED_RESPONSE = "TOUCH_ACCEPTED";
 
-    // Environment variable names
-    private static final String ENV_MIDEYE_URL = "MIDEYE_URL";
-    private static final String ENV_MIDEYE_API_KEY = "MIDEYE_API_KEY";
-    private static final String ENV_MIDEYE_PHONE_ATTRIBUTE = "MIDEYE_PHONE_ATTRIBUTE";
-    private static final String ENV_MIDEYE_TIMEOUT = "MIDEYE_TIMEOUT_SECONDS";
-    private static final String ENV_MIDEYE_SKIP_TLS = "MIDEYE_SKIP_TLS_VERIFY";
-
-    // Defaults
-    private static final String DEFAULT_PHONE_ATTRIBUTE = "phoneNumber";
-    private static final int DEFAULT_TIMEOUT_SECONDS = 120;
+    /** Counter for periodic event pruning (~every 50 authentications). */
+    private volatile int authCounter = 0;
+    private static final int PRUNE_INTERVAL = 50;
 
     @Override
     public void authenticate(AuthenticationFlowContext context) {
+        String realmId = context.getRealm().getId();
+        MagicLinkEventCache eventCache = MagicLinkEventCache.getInstance(realmId);
+        MagicLinkConfig config = loadConfig(context);
+
+        // Apply event log config (picks up runtime changes from Admin Console)
+        eventCache.applyConfig(config.getEventLogMaxSize(), config.getEventTtlHours());
+
+        // Periodic pruning of old events
+        if (++authCounter % PRUNE_INTERVAL == 0) {
+            eventCache.pruneOldEvents();
+        }
+
         UserModel user = context.getUser();
         if (user == null) {
             LOG.error("Mideye MFA: No user in authentication context");
+            eventCache.recordEvent(null, null, "error", null,
+                getClientIp(context), 0, "No user in context");
             context.failure(AuthenticationFlowError.UNKNOWN_USER);
             return;
         }
 
-        // Read configuration from environment
-        String mideyeUrl = getEnv(ENV_MIDEYE_URL);
-        String apiKey = getEnv(ENV_MIDEYE_API_KEY);
-        String phoneAttribute = getEnvOrDefault(ENV_MIDEYE_PHONE_ATTRIBUTE, DEFAULT_PHONE_ATTRIBUTE);
-        int timeoutSeconds = getEnvAsInt(ENV_MIDEYE_TIMEOUT, DEFAULT_TIMEOUT_SECONDS);
-        boolean skipTlsVerify = "true".equalsIgnoreCase(getEnvOrDefault(ENV_MIDEYE_SKIP_TLS, "false"));
-
         // Validate configuration
-        if (mideyeUrl == null || mideyeUrl.isBlank()) {
-            LOG.error("Mideye MFA: MIDEYE_URL environment variable is not set");
-            context.failure(AuthenticationFlowError.INTERNAL_ERROR);
-            return;
-        }
-        if (apiKey == null || apiKey.isBlank()) {
-            LOG.error("Mideye MFA: MIDEYE_API_KEY environment variable is not set");
+        if (!config.isConfigured()) {
+            LOG.error("Mideye MFA: Not configured (URL or API key missing). "
+                + "Configure via Admin Console: Authentication → Flows → ⚙ Settings");
+            eventCache.recordEvent(user.getUsername(), null, "not_configured", null,
+                getClientIp(context), 0, "URL or API key not configured");
             context.failure(AuthenticationFlowError.INTERNAL_ERROR);
             return;
         }
 
         // Get the user's phone number
-        String phoneNumber = getUserPhoneNumber(user, phoneAttribute);
+        String phoneNumber = getUserPhoneNumber(user, config.getPhoneAttribute());
         if (phoneNumber == null || phoneNumber.isBlank()) {
             LOG.warnf("Mideye MFA: User '%s' has no phone number in attribute '%s'",
-                    user.getUsername(), phoneAttribute);
+                    user.getUsername(), config.getPhoneAttribute());
+            eventCache.recordEvent(user.getUsername(), null, "no_phone", null,
+                getClientIp(context), 0,
+                "No phone number in attribute '" + config.getPhoneAttribute() + "'");
             context.failure(AuthenticationFlowError.INVALID_USER);
             return;
         }
@@ -112,36 +101,61 @@ public class MideyeMagicLinkAuthenticator implements Authenticator {
                 user.getUsername(), maskPhoneNumber(phoneNumber));
 
         // Call the Magic Link API
+        long startTime = System.currentTimeMillis();
         try {
-            String responseCode = callMagicLinkApi(mideyeUrl, apiKey, phoneNumber, timeoutSeconds, skipTlsVerify);
+            String responseCode = callMagicLinkApi(
+                config.getMideyeUrl(), config.getApiKey(), phoneNumber,
+                config.getTimeoutSeconds(), config.isSkipTlsVerify());
+
+            long durationMs = System.currentTimeMillis() - startTime;
 
             if (ACCEPTED_RESPONSE.equals(responseCode)) {
-                LOG.infof("Mideye MFA: Authentication ACCEPTED for user '%s'", user.getUsername());
+                LOG.infof("Mideye MFA: Authentication ACCEPTED for user '%s' (%d ms)",
+                    user.getUsername(), durationMs);
+                eventCache.recordEvent(user.getUsername(), maskPhoneNumber(phoneNumber),
+                    "success", responseCode, getClientIp(context), durationMs, null);
                 context.success();
             } else {
-                LOG.warnf("Mideye MFA: Authentication REJECTED for user '%s' (code: %s)",
-                        user.getUsername(), responseCode);
+                LOG.warnf("Mideye MFA: Authentication REJECTED for user '%s' (code: %s, %d ms)",
+                        user.getUsername(), responseCode, durationMs);
+
+                String outcome = isTimeoutResponse(responseCode) ? "timeout" : "rejected";
+                eventCache.recordEvent(user.getUsername(), maskPhoneNumber(phoneNumber),
+                    outcome, responseCode, getClientIp(context), durationMs, null);
                 context.failure(AuthenticationFlowError.INVALID_CREDENTIALS);
             }
         } catch (Exception e) {
-            LOG.errorf(e, "Mideye MFA: Error calling Magic Link API for user '%s'", user.getUsername());
+            long durationMs = System.currentTimeMillis() - startTime;
+            LOG.errorf(e, "Mideye MFA: Error calling Magic Link API for user '%s' (%d ms)",
+                user.getUsername(), durationMs);
+
+            String outcome = isTimeoutException(e) ? "timeout" : "error";
+            eventCache.recordEvent(user.getUsername(), maskPhoneNumber(phoneNumber),
+                outcome, null, getClientIp(context), durationMs, e.getMessage());
             context.failure(AuthenticationFlowError.INTERNAL_ERROR);
         }
     }
 
     /**
-     * Calls the Mideye Magic Link API and returns the response code.
-     *
-     * @param baseUrl         Mideye Server base URL (e.g., https://mideye.example.com:8443)
-     * @param apiKey          API key for authentication
-     * @param phoneNumber     User's phone number in E.164 format
-     * @param timeoutSeconds  HTTP request timeout
-     * @param skipTlsVerify   Whether to skip TLS certificate verification
-     * @return The response code string (e.g., "TOUCH_ACCEPTED", "TOUCH_REJECTED")
-     * @throws Exception if the API call fails
+     * Load config from the Keycloak authenticator config (Admin Console).
      */
-    private String callMagicLinkApi(String baseUrl, String apiKey, String phoneNumber,
-                                     int timeoutSeconds, boolean skipTlsVerify) throws Exception {
+    MagicLinkConfig loadConfig(AuthenticationFlowContext context) {
+        try {
+            AuthenticatorConfigModel configModel = context.getAuthenticatorConfig();
+            if (configModel != null && configModel.getConfig() != null) {
+                return MagicLinkConfig.fromMap(configModel.getConfig());
+            }
+        } catch (Exception e) {
+            LOG.debug("Mideye MFA: Could not load authenticator config, using defaults", e);
+        }
+        return new MagicLinkConfig();
+    }
+
+    /**
+     * Calls the Mideye Magic Link API and returns the response code.
+     */
+    String callMagicLinkApi(String baseUrl, String apiKey, String phoneNumber,
+                            int timeoutSeconds, boolean skipTlsVerify) throws Exception {
         String encodedPhone = URLEncoder.encode(phoneNumber, StandardCharsets.UTF_8);
         String url = baseUrl + "/api/sfwa/auth?msisdn=" + encodedPhone;
 
@@ -178,24 +192,19 @@ public class MideyeMagicLinkAuthenticator implements Authenticator {
             throw new RuntimeException("Mideye API returned HTTP " + statusCode + ": " + body);
         }
 
-        // Parse the response: {"code":"TOUCH_ACCEPTED"}
         return parseResponseCode(body);
     }
 
     /**
      * Parses the "code" field from the JSON response.
-     * Simple parser to avoid adding a JSON library dependency.
      */
-    private String parseResponseCode(String json) {
-        // Expected format: {"code":"TOUCH_ACCEPTED"}
+    static String parseResponseCode(String json) {
         if (json == null || json.isBlank()) {
             return "UNKNOWN";
         }
-        // Find "code":" and extract the value
         String marker = "\"code\":\"";
         int start = json.indexOf(marker);
         if (start < 0) {
-            LOG.warnf("Mideye MFA: Could not parse response code from: %s", json);
             return "UNKNOWN";
         }
         start += marker.length();
@@ -209,7 +218,7 @@ public class MideyeMagicLinkAuthenticator implements Authenticator {
     /**
      * Gets the user's phone number from the configured Keycloak user attribute.
      */
-    private String getUserPhoneNumber(UserModel user, String attributeName) {
+    static String getUserPhoneNumber(UserModel user, String attributeName) {
         List<String> values = user.getAttributes().get(attributeName);
         if (values != null && !values.isEmpty()) {
             return values.getFirst();
@@ -218,34 +227,31 @@ public class MideyeMagicLinkAuthenticator implements Authenticator {
     }
 
     /**
-     * Masks a phone number for logging (shows last 4 digits only).
+     * Masks a phone number for logging and dashboard display (shows last 4 digits only).
      */
-    private String maskPhoneNumber(String phone) {
+    static String maskPhoneNumber(String phone) {
         if (phone == null || phone.length() <= 4) {
             return "****";
         }
         return "***" + phone.substring(phone.length() - 4);
     }
 
-    private String getEnv(String name) {
-        return System.getenv(name);
-    }
-
-    private String getEnvOrDefault(String name, String defaultValue) {
-        String value = System.getenv(name);
-        return (value != null && !value.isBlank()) ? value : defaultValue;
-    }
-
-    private int getEnvAsInt(String name, int defaultValue) {
-        String value = System.getenv(name);
-        if (value != null && !value.isBlank()) {
-            try {
-                return Integer.parseInt(value);
-            } catch (NumberFormatException e) {
-                LOG.warnf("Mideye MFA: Invalid integer for %s: '%s', using default %d", name, value, defaultValue);
-            }
+    private String getClientIp(AuthenticationFlowContext context) {
+        try {
+            return context.getConnection().getRemoteAddr();
+        } catch (Exception e) {
+            return null;
         }
-        return defaultValue;
+    }
+
+    private boolean isTimeoutResponse(String responseCode) {
+        return responseCode != null && (
+            responseCode.contains("TIMEOUT") || responseCode.contains("EXPIRED"));
+    }
+
+    private boolean isTimeoutException(Exception e) {
+        return e instanceof java.net.http.HttpTimeoutException
+            || (e.getMessage() != null && e.getMessage().toLowerCase().contains("timeout"));
     }
 
     // --- Authenticator lifecycle methods ---
@@ -257,21 +263,34 @@ public class MideyeMagicLinkAuthenticator implements Authenticator {
 
     @Override
     public boolean requiresUser() {
-        // Yes, we need a user to look up their phone number
         return true;
     }
 
     @Override
     public boolean configuredFor(KeycloakSession session, RealmModel realm, UserModel user) {
-        // This authenticator is configured if the user has a phone number attribute
-        String phoneAttribute = getEnvOrDefault(ENV_MIDEYE_PHONE_ATTRIBUTE, DEFAULT_PHONE_ATTRIBUTE);
+        // Read phone attribute from realm-level authenticator config
+        String phoneAttribute = MagicLinkConfig.DEFAULT_PHONE_ATTRIBUTE;
+        try {
+            MagicLinkConfig config = realm.getAuthenticatorConfigsStream()
+                .filter(cm -> cm.getConfig() != null
+                        && cm.getConfig().containsKey(MagicLinkConfig.KEY_MIDEYE_URL))
+                .findFirst()
+                .map(cm -> MagicLinkConfig.fromMap(cm.getConfig()))
+                .orElse(null);
+            if (config != null) {
+                phoneAttribute = config.getPhoneAttribute();
+            }
+        } catch (Exception e) {
+            // Use default
+        }
+
         String phone = getUserPhoneNumber(user, phoneAttribute);
         return phone != null && !phone.isBlank();
     }
 
     @Override
     public void setRequiredActions(KeycloakSession session, RealmModel realm, UserModel user) {
-        // No required actions — user must have phone number pre-configured
+        // No required actions
     }
 
     @Override
@@ -285,15 +304,9 @@ public class MideyeMagicLinkAuthenticator implements Authenticator {
      */
     private static class TrustAllCerts implements X509TrustManager {
         @Override
-        public void checkClientTrusted(X509Certificate[] chain, String authType) {
-            // Accept all
-        }
-
+        public void checkClientTrusted(X509Certificate[] chain, String authType) {}
         @Override
-        public void checkServerTrusted(X509Certificate[] chain, String authType) {
-            // Accept all
-        }
-
+        public void checkServerTrusted(X509Certificate[] chain, String authType) {}
         @Override
         public X509Certificate[] getAcceptedIssuers() {
             return new X509Certificate[0];

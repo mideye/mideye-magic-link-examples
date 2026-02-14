@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mideye Magic Link — Dashboard</title>
+    <style>
+        /* ── Theme variables ─────────────────────── */
+        :root[data-theme="dark"] {
+            --bg: #0f1117;
+            --surface: #1a1d27;
+            --surface-hover: #22263a;
+            --surface-alt: #151822;
+            --border: #2a2e3e;
+            --text: #e1e4ed;
+            --text-muted: #8b90a0;
+            --text-dim: #5c6070;
+            --accent: #4f8ff7;
+            --accent-hover: #6ba0f9;
+            --accent-bg: rgba(79, 143, 247, 0.12);
+            --danger: #e5534b;
+            --danger-hover: #f47067;
+            --danger-bg: rgba(229, 83, 75, 0.12);
+            --success: #57ab5a;
+            --success-bg: rgba(87, 171, 90, 0.12);
+            --warning: #c69026;
+            --warning-bg: rgba(198, 144, 38, 0.12);
+            --info: #539bf5;
+            --info-bg: rgba(83, 155, 245, 0.12);
+            --radius: 8px;
+            --shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        :root[data-theme="light"] {
+            --bg: #f5f6fa;
+            --surface: #ffffff;
+            --surface-hover: #f0f1f5;
+            --surface-alt: #fafbfc;
+            --border: #e1e4ea;
+            --text: #1a1d2e;
+            --text-muted: #6b7080;
+            --text-dim: #9ca0b0;
+            --accent: #3b7de6;
+            --accent-hover: #2a6cd4;
+            --accent-bg: rgba(59, 125, 230, 0.08);
+            --danger: #d04040;
+            --danger-hover: #c03030;
+            --danger-bg: rgba(208, 64, 64, 0.08);
+            --success: #2da44e;
+            --success-bg: rgba(45, 164, 78, 0.08);
+            --warning: #b08020;
+            --warning-bg: rgba(176, 128, 32, 0.08);
+            --info: #2a6cd4;
+            --info-bg: rgba(42, 108, 212, 0.08);
+            --radius: 8px;
+            --shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+
+        /* ── Top bar ──────────────────────────────── */
+        .topbar {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            box-shadow: var(--shadow);
+        }
+        .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .topbar h1 {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+        /* ── Theme toggle ─────────────────────────── */
+        .theme-toggle {
+            background: var(--surface-hover);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 6px 12px;
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .theme-toggle:hover { background: var(--accent-bg); }
+
+        /* ── Buttons ──────────────────────────────── */
+        .btn {
+            padding: 6px 14px;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.15s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn:hover { background: var(--surface-hover); }
+        .btn-accent { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .btn-accent:hover { background: var(--accent-hover); }
+        .btn-danger { color: var(--danger); border-color: var(--danger); background: var(--danger-bg); }
+        .btn-danger:hover { background: var(--danger); color: #fff; }
+        .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+        /* ── Cards ─────────────────────────────────── */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px 20px;
+            box-shadow: var(--shadow);
+        }
+        .stat-card .label {
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+        .stat-card .value {
+            font-size: 28px;
+            font-weight: 700;
+        }
+        .stat-card .sub {
+            font-size: 11px;
+            color: var(--text-dim);
+            margin-top: 2px;
+        }
+        .stat-card.success .value { color: var(--success); }
+        .stat-card.danger .value  { color: var(--danger); }
+        .stat-card.warning .value { color: var(--warning); }
+        .stat-card.info .value    { color: var(--info); }
+
+        /* ── Config bar ───────────────────────────── */
+        .config-bar {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 12px 20px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        .config-bar .chip {
+            background: var(--surface-hover);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 3px 12px;
+            font-size: 12px;
+            color: var(--text);
+        }
+        .config-bar .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 4px;
+        }
+        .config-bar .status-dot.ok { background: var(--success); }
+        .config-bar .status-dot.err { background: var(--danger); }
+
+        /* ── Toolbar ──────────────────────────────── */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .toolbar .search-input {
+            flex: 1;
+            min-width: 200px;
+            padding: 7px 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--surface);
+            color: var(--text);
+            font-size: 13px;
+        }
+        .toolbar .search-input::placeholder { color: var(--text-dim); }
+        .toolbar .search-input:focus { outline: none; border-color: var(--accent); }
+
+        .filter-group {
+            display: flex;
+            gap: 4px;
+        }
+        .filter-btn {
+            padding: 5px 10px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--surface);
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.15s;
+        }
+        .filter-btn:hover { background: var(--surface-hover); }
+        .filter-btn.active { background: var(--accent-bg); color: var(--accent); border-color: var(--accent); }
+
+        /* ── Table ─────────────────────────────────── */
+        .table-wrapper {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: var(--shadow);
+        }
+        .table-header {
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .table-header h2 {
+            font-size: 15px;
+            font-weight: 600;
+        }
+        .table-header .count {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        thead { background: var(--surface-alt); }
+        th {
+            text-align: left;
+            padding: 10px 16px;
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+        }
+        td {
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+        }
+        tr:hover { background: var(--surface-hover); }
+
+        /* ── Badges ────────────────────────────────── */
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .badge-success { background: var(--success-bg); color: var(--success); }
+        .badge-danger  { background: var(--danger-bg);  color: var(--danger); }
+        .badge-warning { background: var(--warning-bg); color: var(--warning); }
+        .badge-info    { background: var(--info-bg);    color: var(--info); }
+        .badge-muted   { background: var(--surface-hover); color: var(--text-muted); }
+
+        .duration {
+            font-variant-numeric: tabular-nums;
+            color: var(--text-muted);
+        }
+        .mono { font-family: 'SF Mono', SFMono-Regular, Consolas, monospace; font-size: 12px; }
+
+        /* ── Toast ─────────────────────────────────── */
+        .toast {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 12px 20px;
+            border-radius: var(--radius);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+            z-index: 100;
+            font-size: 13px;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: all 0.3s;
+            pointer-events: none;
+        }
+        .toast.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+        .toast.toast-success { border-left: 3px solid var(--success); }
+        .toast.toast-error   { border-left: 3px solid var(--danger); }
+        .toast.toast-warning { border-left: 3px solid var(--warning); }
+        .toast.toast-info    { border-left: 3px solid var(--info); }
+
+        /* ── Empty state ──────────────────────────── */
+        .empty-state {
+            text-align: center;
+            padding: 48px 20px;
+            color: var(--text-dim);
+        }
+        .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+        .empty-state p { font-size: 14px; }
+
+        /* ── Spinner ──────────────────────────────── */
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Responsive ───────────────────────────── */
+        @media (max-width: 768px) {
+            .content { padding: 12px; }
+            .topbar { padding: 10px 12px; }
+            .stats-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+            td, th { padding: 8px 10px; font-size: 12px; }
+            .table-wrapper { overflow-x: auto; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Top bar -->
+    <div class="topbar">
+        <div class="topbar-left">
+            <span style="font-size: 24px;">🔑</span>
+            <h1>Mideye Magic Link</h1>
+        </div>
+        <div class="topbar-right">
+            <span id="autoRefreshLabel" class="mono" style="font-size: 11px; color: var(--text-dim);">Auto-refresh: 10s</span>
+            <button class="btn btn-sm" onclick="loadAll()" title="Refresh now">⟳ Refresh</button>
+            <button class="btn btn-sm" onclick="toggleAutoRefresh()" id="autoRefreshBtn" title="Toggle auto-refresh">⏸</button>
+            <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">◑</button>
+        </div>
+    </div>
+
+    <div class="content">
+        <!-- Config bar -->
+        <div class="config-bar" id="configBar">
+            <span><span class="status-dot" id="configDot"></span> <span id="configStatus">Loading...</span></span>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card"><div class="label">Total attempts</div><div class="value" id="statTotal">—</div></div>
+            <div class="stat-card success"><div class="label">Successful</div><div class="value" id="statSuccess">—</div><div class="sub" id="statSuccessRate"></div></div>
+            <div class="stat-card danger"><div class="label">Rejected</div><div class="value" id="statRejected">—</div></div>
+            <div class="stat-card warning"><div class="label">Timeout</div><div class="value" id="statTimeout">—</div></div>
+            <div class="stat-card info"><div class="label">Errors</div><div class="value" id="statErrors">—</div></div>
+            <div class="stat-card"><div class="label">No phone</div><div class="value" id="statNoPhone">—</div></div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="toolbar">
+            <input type="text" class="search-input" id="searchInput"
+                   placeholder="Filter by username, phone, IP, outcome..."
+                   oninput="applyFilter()">
+            <div class="filter-group">
+                <button class="filter-btn active" data-filter="all" onclick="setFilter('all', this)">All</button>
+                <button class="filter-btn" data-filter="success" onclick="setFilter('success', this)">✓ Success</button>
+                <button class="filter-btn" data-filter="rejected" onclick="setFilter('rejected', this)">✗ Rejected</button>
+                <button class="filter-btn" data-filter="timeout" onclick="setFilter('timeout', this)">⏱ Timeout</button>
+                <button class="filter-btn" data-filter="error" onclick="setFilter('error', this)">⚠ Error</button>
+            </div>
+            <button class="btn btn-sm" onclick="exportCSV()" title="Export events as CSV">📥 CSV</button>
+            <button class="btn btn-sm btn-danger" onclick="resetStats()" title="Reset statistics counters">↺ Reset</button>
+        </div>
+
+        <!-- Events table -->
+        <div class="table-wrapper">
+            <div class="table-header">
+                <h2>Recent Authentication Events</h2>
+                <span class="count" id="eventCount"></span>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Username</th>
+                        <th>Phone</th>
+                        <th>Outcome</th>
+                        <th>Response</th>
+                        <th>Duration</th>
+                        <th>IP Address</th>
+                        <th>Error</th>
+                    </tr>
+                </thead>
+                <tbody id="eventsBody">
+                    <tr><td colspan="8" class="empty-state"><div class="spinner"></div><p style="margin-top:8px">Loading events…</p></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+    // ── State ─────────────────────────────────────────────────
+    let allEvents = [];
+    let activeFilter = 'all';
+    let autoRefresh = true;
+    let refreshTimer = null;
+    const REFRESH_INTERVAL = 10_000;
+
+    // ── API base URL ──────────────────────────────────────────
+    // Dashboard URL: /realms/{realm}/mideye-magic-link/dashboard
+    // API base:      /realms/{realm}/mideye-magic-link/api/
+    const pathParts = window.location.pathname.split('/');
+    const realmIdx = pathParts.indexOf('realms');
+    const realmName = realmIdx >= 0 ? pathParts[realmIdx + 1] : '';
+    const API_BASE = (realmIdx >= 0
+        ? pathParts.slice(0, realmIdx).join('/') : '')
+        + '/realms/' + realmName + '/mideye-magic-link/api';
+
+    // ── Init ──────────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', () => {
+        loadTheme();
+        loadAll();
+        startAutoRefresh();
+    });
+
+    function loadAll() {
+        loadConfig();
+        loadStats();
+        loadEvents();
+    }
+
+    // ── Config ────────────────────────────────────────────────
+    async function loadConfig() {
+        try {
+            const res = await fetch(API_BASE + '/config', { credentials: 'same-origin' });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const cfg = await res.json();
+
+            const dot = document.getElementById('configDot');
+            const status = document.getElementById('configStatus');
+            const bar = document.getElementById('configBar');
+
+            if (cfg.configured) {
+                dot.className = 'status-dot ok';
+                status.textContent = 'Connected';
+            } else {
+                dot.className = 'status-dot err';
+                status.textContent = 'Not configured';
+            }
+
+            // Build chips
+            const chips = [];
+            if (cfg.mideyeUrl) chips.push('Server: ' + cfg.mideyeUrl);
+            chips.push('Phone attr: ' + (cfg.phoneAttribute || 'phoneNumber'));
+            chips.push('Timeout: ' + (cfg.timeoutSeconds || 120) + 's');
+            chips.push('Max events: ' + (cfg.eventLogMaxSize || 1000));
+            chips.push('TTL: ' + (cfg.eventTtlHours || 1) + 'h');
+            if (cfg.skipTlsVerify) chips.push('⚠ TLS verify OFF');
+
+            // Remove old chips
+            bar.querySelectorAll('.chip').forEach(c => c.remove());
+            chips.forEach(text => {
+                const span = document.createElement('span');
+                span.className = 'chip';
+                span.textContent = text;
+                bar.appendChild(span);
+            });
+        } catch (e) {
+            console.error('Config load error:', e);
+        }
+    }
+
+    // ── Stats ─────────────────────────────────────────────────
+    async function loadStats() {
+        try {
+            const res = await fetch(API_BASE + '/stats', { credentials: 'same-origin' });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const s = await res.json();
+
+            document.getElementById('statTotal').textContent = fmtNum(s.totalAttempts);
+            document.getElementById('statSuccess').textContent = fmtNum(s.totalSuccess);
+            document.getElementById('statRejected').textContent = fmtNum(s.totalRejected);
+            document.getElementById('statTimeout').textContent = fmtNum(s.totalTimeout);
+            document.getElementById('statErrors').textContent = fmtNum(s.totalErrors);
+            document.getElementById('statNoPhone').textContent = fmtNum(s.totalNoPhone);
+
+            const rate = s.totalAttempts > 0
+                ? ((s.totalSuccess / s.totalAttempts) * 100).toFixed(1)
+                : '—';
+            document.getElementById('statSuccessRate').textContent =
+                rate !== '—' ? rate + '% success rate' : '';
+        } catch (e) {
+            console.error('Stats load error:', e);
+        }
+    }
+
+    // ── Events ────────────────────────────────────────────────
+    async function loadEvents() {
+        try {
+            const res = await fetch(API_BASE + '/events?limit=1000', { credentials: 'same-origin' });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            allEvents = await res.json();
+            applyFilter();
+        } catch (e) {
+            console.error('Events load error:', e);
+            document.getElementById('eventsBody').innerHTML =
+                '<tr><td colspan="8" class="empty-state"><div class="icon">⚠️</div><p>Failed to load events</p></td></tr>';
+        }
+    }
+
+    function applyFilter() {
+        const search = document.getElementById('searchInput').value.toLowerCase().trim();
+        let filtered = allEvents;
+
+        // Outcome filter
+        if (activeFilter !== 'all') {
+            filtered = filtered.filter(e => e.outcome === activeFilter);
+        }
+
+        // Text search
+        if (search) {
+            filtered = filtered.filter(e =>
+                (e.username || '').toLowerCase().includes(search) ||
+                (e.phoneNumber || '').toLowerCase().includes(search) ||
+                (e.ipAddress || '').toLowerCase().includes(search) ||
+                (e.outcome || '').toLowerCase().includes(search) ||
+                (e.responseCode || '').toLowerCase().includes(search) ||
+                (e.errorMessage || '').toLowerCase().includes(search)
+            );
+        }
+
+        renderEvents(filtered);
+    }
+
+    function renderEvents(events) {
+        const tbody = document.getElementById('eventsBody');
+        const count = document.getElementById('eventCount');
+        count.textContent = events.length + ' event' + (events.length !== 1 ? 's' : '')
+            + (allEvents.length !== events.length ? ' / ' + allEvents.length + ' total' : '');
+
+        if (events.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="empty-state">'
+                + '<div class="icon">📭</div>'
+                + '<p>No events' + (activeFilter !== 'all' ? ' matching filter' : '') + '</p>'
+                + '</td></tr>';
+            return;
+        }
+
+        let html = '';
+        for (const e of events) {
+            html += '<tr>'
+                + '<td class="mono">' + fmtTime(e.timestamp) + '</td>'
+                + '<td>' + esc(e.username || '—') + '</td>'
+                + '<td class="mono">' + esc(e.phoneNumber || '—') + '</td>'
+                + '<td>' + outcomeBadge(e.outcome) + '</td>'
+                + '<td class="mono">' + esc(e.responseCode || '—') + '</td>'
+                + '<td class="duration">' + fmtDuration(e.durationMs) + '</td>'
+                + '<td class="mono">' + esc(e.ipAddress || '—') + '</td>'
+                + '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'
+                    + esc(e.errorMessage || '') + '">'
+                    + esc(e.errorMessage || '') + '</td>'
+                + '</tr>';
+        }
+        tbody.innerHTML = html;
+    }
+
+    function outcomeBadge(outcome) {
+        const map = {
+            success:        '<span class="badge badge-success">✓ Success</span>',
+            rejected:       '<span class="badge badge-danger">✗ Rejected</span>',
+            timeout:        '<span class="badge badge-warning">⏱ Timeout</span>',
+            error:          '<span class="badge badge-danger">⚠ Error</span>',
+            no_phone:       '<span class="badge badge-info">📵 No phone</span>',
+            not_configured: '<span class="badge badge-muted">⚙ Not configured</span>'
+        };
+        return map[outcome] || '<span class="badge badge-muted">' + esc(outcome || '?') + '</span>';
+    }
+
+    function setFilter(filter, btn) {
+        activeFilter = filter;
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        applyFilter();
+    }
+
+    // ── CSV export ────────────────────────────────────────────
+    async function exportCSV() {
+        try {
+            const res = await fetch(API_BASE + '/export/events', { credentials: 'same-origin' });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const csv = await res.text();
+
+            // Check for empty data (headers only)
+            const lines = csv.trim().split('\n');
+            if (lines.length <= 1) {
+                showToast('No event data to export', 'warning');
+                return;
+            }
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'magic-link-events.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('CSV exported (' + (lines.length - 1) + ' events)', 'success');
+        } catch (e) {
+            showToast('Export failed: ' + e.message, 'error');
+        }
+    }
+
+    // ── Reset stats ───────────────────────────────────────────
+    async function resetStats() {
+        if (!confirm('Reset all statistics counters? This cannot be undone.')) return;
+        try {
+            const res = await fetch(API_BASE + '/stats/reset', {
+                method: 'POST',
+                credentials: 'same-origin'
+            });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            showToast('Statistics reset', 'success');
+            loadStats();
+        } catch (e) {
+            showToast('Reset failed: ' + e.message, 'error');
+        }
+    }
+
+    // ── Auto-refresh ──────────────────────────────────────────
+    function startAutoRefresh() {
+        stopAutoRefresh();
+        if (autoRefresh) {
+            refreshTimer = setInterval(loadAll, REFRESH_INTERVAL);
+        }
+    }
+    function stopAutoRefresh() {
+        if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+    }
+    function toggleAutoRefresh() {
+        autoRefresh = !autoRefresh;
+        document.getElementById('autoRefreshBtn').textContent = autoRefresh ? '⏸' : '▶';
+        document.getElementById('autoRefreshLabel').textContent =
+            autoRefresh ? 'Auto-refresh: 10s' : 'Auto-refresh: off';
+        if (autoRefresh) startAutoRefresh();
+        else stopAutoRefresh();
+    }
+
+    // ── Theme ─────────────────────────────────────────────────
+    function toggleTheme() {
+        const html = document.documentElement;
+        const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        html.setAttribute('data-theme', next);
+        localStorage.setItem('ml-theme', next);
+    }
+    function loadTheme() {
+        const saved = localStorage.getItem('ml-theme');
+        if (saved) document.documentElement.setAttribute('data-theme', saved);
+    }
+
+    // ── Formatters ────────────────────────────────────────────
+    function fmtNum(n) {
+        if (n == null) return '—';
+        return Number(n).toLocaleString();
+    }
+
+    function fmtTime(ts) {
+        if (!ts) return '—';
+        try {
+            const d = new Date(ts);
+            return d.toLocaleString('sv-SE', {
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
+            });
+        } catch { return ts; }
+    }
+
+    function fmtDuration(ms) {
+        if (ms == null || ms === 0) return '—';
+        if (ms < 1000) return ms + ' ms';
+        return (ms / 1000).toFixed(1) + ' s';
+    }
+
+    function esc(s) {
+        if (!s) return '';
+        const el = document.createElement('span');
+        el.textContent = s;
+        return el.innerHTML;
+    }
+
+    // ── Toast ─────────────────────────────────────────────────
+    function showToast(msg, type) {
+        const toast = document.getElementById('toast');
+        toast.textContent = msg;
+        toast.className = 'toast toast-' + (type || 'info') + ' show';
+        setTimeout(() => { toast.classList.remove('show'); }, 3500);
+    }
+    </script>
+</body>
+</html>

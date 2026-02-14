@@ -17,6 +17,8 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0.7
+    extra_hosts:
+      - "dev-ms.dove-owl.ts.net:10.110.205.16"
     container_name: keycloak
     restart: unless-stopped
     command: start-dev
