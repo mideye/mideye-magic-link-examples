@@ -13,11 +13,7 @@ Each example is a **complete, single-file web application** — enter a phone nu
 | [C# / .NET](dotnet/) | `dotnet/` | ASP.NET Core Minimal API | .NET 8+ |
 | [Go](go/) | `go/` | None (stdlib only) | Go 1.21+ |
 
-### Identity Provider Integrations
-
-| IdP | Directory | Description |
-|-----|-----------|-------------|
-| [Keycloak](keycloak/) | `keycloak/` | Custom authenticator SPI — adds Mideye MFA to Keycloak login flows (Docker + Java 17+) |
+> **Keycloak integration** has moved to the [mideye-keycloak-integrations](https://github.com/niclasmideye/mideye-keycloak-integrations) repo — a single repo for all Keycloak SPIs (Shield, Magic Link, Mideye Service).
 
 Don't want to run a full app? Jump to [Quick API Test](#quick-api-test-no-app-required) for one-liner examples using **cURL**, **HTTPie**, **PowerShell**, **wget**, and **Postman**.
 
